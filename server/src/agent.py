@@ -88,7 +88,7 @@ class Agent:
             top_p=0.95,
         )
         stt = DeepgramSTT(model="nova-3", language="multi")
-        tts = MiniMaxTTS(model="speech_2_6_turbo", voice_id="Portuguese_CaptivatingStoryteller")
+        tts = MiniMaxTTS(model="speech_2_6_turbo", voice_id="Portuguese_AttractiveGirl")
 
         # Optional BYOK example: replace the STT block above and set DEEPGRAM_API_KEY.
         # stt = DeepgramSTT(api_key=os.getenv("DEEPGRAM_API_KEY"), model="nova-3", language="en")
