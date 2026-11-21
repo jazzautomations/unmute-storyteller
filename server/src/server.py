@@ -19,6 +19,7 @@ _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(_base_dir, '.env'), override=True)
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agora_agent.agentkit.token import generate_convo_ai_token
@@ -218,6 +219,15 @@ async def get_film(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="film job not found")
     return {"code": 0, "msg": "success", "data": job}
+
+
+@router.get("/film/{job_id}/file")
+async def get_film_file(job_id: str):
+    """Serve the locally assembled mp4 for jobs that went through the studio assets."""
+    path = feita.film_file(job_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="film file not found")
+    return FileResponse(path, media_type="video/mp4")
 
 
 app.include_router(router)
