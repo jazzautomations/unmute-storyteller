@@ -55,6 +55,49 @@ export async function startAgent(channelName: string, rtcUid: number, userUid: n
   return result.data.agent_id
 }
 
+export interface FilmJob {
+  id: string
+  status: 'queued' | 'writing' | 'producing' | 'rendering' | 'ready' | 'error'
+  title: string
+  video_url: string | null
+  detail: string
+  progress?: { docs: number; shots: number; clips: number; jobs: number }
+}
+
+export async function startFilm(transcript: string, title?: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/film`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript, title }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  const result = await response.json()
+  if (result.code !== 0 || !result.data?.job_id) {
+    throw new Error(result.msg || 'Failed to start film')
+  }
+  return result.data.job_id
+}
+
+export async function getFilm(jobId: string): Promise<FilmJob> {
+  const response = await fetch(`${API_BASE_URL}/film/${jobId}`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  const result = await response.json()
+  if (result.code !== 0 || !result.data) {
+    throw new Error(result.msg || 'Failed to get film status')
+  }
+  return result.data
+}
+
 export async function stopAgent(agentId: string): Promise<void> {
   if (!agentId) return
 

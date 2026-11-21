@@ -24,11 +24,11 @@ export function QuickstartPreCallCard({
 			}}
 		>
 			<h1 className="text-[28px] font-medium leading-[1.2] text-white">
-				Try Agora&apos;s Voice Agent
+				Sua história vira filme
 			</h1>
 			<p className="mt-[14px] text-sm font-medium leading-6 text-muted-foreground">
-				Built on Agora&apos;s flagship Conversational AI engine, for effortless
-				agentic conversations.
+				Converse com a Nova — ela adora ouvir histórias. No fim, um estúdio de
+				IA transforma a sua em um curta-metragem.
 			</p>
 
 			<Button
@@ -44,10 +44,10 @@ export function QuickstartPreCallCard({
 				{isLoading ? (
 					<>
 						<Loader2 className="h-4 w-4 animate-spin" />
-						Starting...
+						Chamando a Nova...
 					</>
 				) : (
-					"Start Conversation"
+					"Contar minha história"
 				)}
 			</Button>
 			{error ? <p className="mt-3 text-xs text-destructive">{error}</p> : null}

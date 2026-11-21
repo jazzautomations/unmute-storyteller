@@ -149,6 +149,34 @@ body {
 	animation-delay: 180ms;
 }
 
+@keyframes nova-talk {
+	0%,
+	100% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.035);
+	}
+}
+
+@keyframes nova-breathe {
+	0%,
+	100% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.012);
+	}
+}
+
+.animate-nova-talk {
+	animation: nova-talk 600ms ease-in-out infinite;
+}
+
+.animate-nova-breathe {
+	animation: nova-breathe 4s ease-in-out infinite;
+}
+
 .conversation-mic-host {
 	flex-shrink: 0;
 }

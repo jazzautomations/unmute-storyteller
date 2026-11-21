@@ -7,7 +7,9 @@ import {
 	type ConnectionIssue,
 	getConversationIssueSeverity,
 } from "@/components/ConversationErrorCard";
+import { FilmPanel } from "@/components/FilmPanel";
 import { MicrophoneSelector } from "@/components/MicrophoneSelector";
+import { NovaAvatar } from "@/components/NovaAvatar";
 import { QuickstartConversationLayout } from "@/components/QuickstartConversationLayout";
 import {
 	type QuickstartAgentMetric,
@@ -23,6 +25,7 @@ import {
 	normalizeTranscript,
 } from "@/lib/conversation";
 import type { ConversationComponentProps } from "@/types/conversation";
+import { Clapperboard } from "lucide-react";
 import {
 	type AgentState,
 	type AgentTranscription,
@@ -33,7 +36,6 @@ import {
 	TranscriptHelperMode,
 	type UserTranscription,
 } from "agora-agent-client-toolkit";
-import { AgentVisualizer } from "agora-agent-uikit";
 import { MicButtonWithVisualizer } from "agora-agent-uikit/rtc";
 import {
 	RemoteUser,
@@ -92,6 +94,7 @@ export default function ConversationComponent({
 	const [isEnabled, setIsEnabled] = useState(true);
 	const [isAgentConnected, setIsAgentConnected] = useState(false);
 	const [isConnectionDetailsOpen, setIsConnectionDetailsOpen] = useState(false);
+	const [filmOpen, setFilmOpen] = useState(false);
 
 	const [connectionState, setConnectionState] = useState<string>("CONNECTING");
 	const agentUID =
@@ -334,6 +337,19 @@ export default function ConversationComponent({
 		return getCurrentInProgressMessage(transcript);
 	}, [transcript]);
 
+	const interviewTranscript = useMemo(() => {
+		return messageList
+			.filter((item) => typeof item.text === "string" && item.text.trim())
+			.map((item) => {
+				const who =
+					String(item.uid) === String(agentUID) ? "Nova" : "Pessoa";
+				return `${who}: ${item.text}`;
+			})
+			.join("\n");
+	}, [messageList, agentUID]);
+
+	const canMakeFilm = interviewTranscript.split("\n").length >= 4;
+
 	usePublish([localMicrophoneTrack]);
 
 	useClientEvent(client, "user-joined", (user) => {
@@ -456,9 +472,16 @@ export default function ConversationComponent({
 			visualizer={
 				<section
 					className="relative flex h-full min-h-[20rem] w-full max-w-4xl items-center justify-center"
-					aria-label="AI agent status visualization"
+					aria-label="Nova, a entrevistadora"
 				>
-					<AgentVisualizer state={visualizerState} size="lg" />
+					{filmOpen ? (
+						<FilmPanel
+							transcript={interviewTranscript}
+							onClose={() => setFilmOpen(false)}
+						/>
+					) : (
+						<NovaAvatar state={visualizerState} />
+					)}
 					{remoteUsers.map((user) => (
 						<div key={user.uid} className="hidden">
 							<RemoteUser user={user} />
@@ -484,6 +507,21 @@ export default function ConversationComponent({
 						/>
 					</div>
 					<MicrophoneSelector localMicrophoneTrack={localMicrophoneTrack} />
+					<button
+						type="button"
+						disabled={!canMakeFilm}
+						onClick={() => setFilmOpen(true)}
+						className="ml-1 flex h-10 items-center gap-2 rounded-full border border-pink-500/60 bg-pink-500/10 px-4 text-sm font-medium text-pink-400 transition-colors hover:bg-pink-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+						aria-label="Fazer meu filme a partir da conversa"
+						title={
+							canMakeFilm
+								? "Transformar a conversa em filme"
+								: "Conte um pouco da história primeiro"
+						}
+					>
+						<Clapperboard className="h-4 w-4" />
+						Fazer meu filme
+					</button>
 				</fieldset>
 			}
 			onEndConversation={handleEndConversation}

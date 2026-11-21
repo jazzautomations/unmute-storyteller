@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agora_agent.agentkit.token import generate_convo_ai_token
 from agent import Agent
+import feita
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -87,6 +88,12 @@ class StartAgentRequest(BaseModel):
 class StopAgentRequest(BaseModel):
     """Request body for POST /stopAgent"""
     agentId: str
+
+
+class FilmRequest(BaseModel):
+    """Request body for POST /film"""
+    transcript: str
+    title: Optional[str] = None
 
 
 # API endpoints
@@ -191,6 +198,26 @@ async def stop_agent(request: StopAgentRequest):
     except Exception as e:
         _log_route_error("/stopAgent", e, agentId=request.agentId)
         raise _to_http_error(e)
+
+
+@router.post("/film")
+async def start_film(request: FilmRequest):
+    """Kick off a feita.ai film job from the conversation transcript."""
+    try:
+        job_id = feita.start_film(request.transcript, title=request.title)
+        return {"code": 0, "msg": "success", "data": {"job_id": job_id}}
+    except Exception as e:
+        _log_route_error("/film", e)
+        raise _to_http_error(e)
+
+
+@router.get("/film/{job_id}")
+async def get_film(job_id: str):
+    """Poll film job status. Returns status/detail/progress and video_url when ready."""
+    job = feita.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="film job not found")
+    return {"code": 0, "msg": "success", "data": job}
 
 
 app.include_router(router)

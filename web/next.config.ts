@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
 
+  output: 'standalone',
+
   async rewrites() {
     const backendUrl = process.env.AGENT_BACKEND_URL?.replace(/\/$/, '')
     if (!backendUrl) {
@@ -31,6 +33,14 @@ const nextConfig: NextConfig = {
       {
         source: '/api/stopAgent',
         destination: `${backendUrl}/stopAgent`,
+      },
+      {
+        source: '/api/film',
+        destination: `${backendUrl}/film`,
+      },
+      {
+        source: '/api/film/:path*',
+        destination: `${backendUrl}/film/:path*`,
       },
     ]
   },

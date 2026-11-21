@@ -14,14 +14,25 @@ from agora_agent.agentkit.vendors import DeepgramSTT, MiniMaxTTS, OpenAI
 
 logger = logging.getLogger("uvicorn.error")
 
-ADA_PROMPT = """You are Ada, an agentic developer advocate from Agora. You help developers understand and build with Agora's Conversational AI platform.
+NOVA_PROMPT = """Você é Nova, uma ouvinte apaixonada por histórias que trabalha num estúdio de filmes por IA.
+Seu trabalho: entrevistar a pessoa e coletar uma história rica em detalhes para virar um curta-metragem.
 
-Agora is a real-time communications company. The product you represent is the Agora Conversational AI Engine.
-
-If you do not know a specific fact about Agora, say so plainly and suggest checking docs.agora.io. Keep most replies to one or two sentences unless the user explicitly asks for more detail.
+Como você se comporta:
+- Curiosidade genuína e entusiasmo: "nossa!", "sério?!", "que demais!", "me conta mais!".
+- UMA pergunta por vez — nunca despeje várias perguntas.
+- Cace detalhes concretos: quem são os personagens, onde acontece, época, cores/sons/cheiros,
+  o momento de virada, como termina, o que a pessoa sentiu.
+- Se a resposta for vaga, peça especificidade com carinho: "mas como era exatamente o lugar?".
+- Ouvinte ativo: resuma de volta de vez em quando — "então o pescador ouvia a voz vindo do poço...".
+- Respostas CURTAS de 1 a 3 frases faladas, ritmo de conversa real.
+- Se a pessoa travar, ofereça gancho: "pode ser memória, causo de família, sonho, até mentira".
+- Depois de alguns minutos com material bom, diga que a história ficou ótima e que é só a pessoa
+  clicar em "Fazer meu filme" quando quiser.
+- Fale sempre em português brasileiro natural, informal e caloroso. Se falarem em outro idioma,
+  acompanhe o idioma da pessoa.
 """
 
-DEFAULT_GREETING = "Hi there! I'm Ada, your virtual assistant from Agora. How can I help?"
+DEFAULT_GREETING = "Oi! Eu sou a Nova — eu AMO uma boa história. Me conta uma história que você adoraria ver virar filme? Pode ser memória, causo de família, sonho... o que você quiser!"
 
 
 class Agent:
@@ -68,14 +79,14 @@ class Agent:
         llm = OpenAI(
             model="gpt-4o-mini",
             greeting_message=self.greeting,
-            failure_message="Please wait a moment.",
-            max_history=15,
+            failure_message="Opa, caiu aqui — me repete a última parte?",
+            max_history=30,
             max_tokens=1024,
-            temperature=0.7,
+            temperature=0.8,
             top_p=0.95,
         )
-        stt = DeepgramSTT(model="nova-3", language="en")
-        tts = MiniMaxTTS(model="speech_2_6_turbo", voice_id="English_captivating_female1")
+        stt = DeepgramSTT(model="nova-3", language="multi")
+        tts = MiniMaxTTS(model="speech_2_6_turbo", voice_id="Portuguese_CaptivatingStoryteller")
 
         # Optional BYOK example: replace the STT block above and set DEEPGRAM_API_KEY.
         # stt = DeepgramSTT(api_key=os.getenv("DEEPGRAM_API_KEY"), model="nova-3", language="en")
@@ -111,9 +122,9 @@ class Agent:
 
         agora_agent = AgoraAgent(
             client=self.client,
-            instructions=ADA_PROMPT,
+            instructions=NOVA_PROMPT,
             greeting=self.greeting,
-            failure_message="Please wait a moment.",
+            failure_message="Opa, caiu aqui — me repete a última parte?",
             max_history=50,
             turn_detection={
                 "config": {
@@ -149,7 +160,7 @@ class Agent:
             agent_uid=str(agent_uid),
             remote_uids=[str(user_uid)],
             enable_string_uid=False,
-            idle_timeout=30,
+            idle_timeout=60,
             expires_in=3600,
         )
 
