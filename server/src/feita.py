@@ -204,12 +204,18 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
 
 
 def film_file(job_id: str) -> Optional[str]:
-    job = get_job(job_id)
-    if not job:
+    # Registry is in-memory and dies with the process; the mp4 on disk is the
+    # source of truth so finished links keep working across restarts.
+    if not job_id or not job_id.isalnum():
         return None
-    path = job.get("file_path")
-    if path and os.path.isfile(path):
+    path = os.path.join(FILMS_DIR, f"{job_id}.mp4")
+    if os.path.isfile(path):
         return path
+    job = get_job(job_id)
+    if job:
+        path = job.get("file_path")
+        if path and os.path.isfile(path):
+            return path
     return None
 
 
