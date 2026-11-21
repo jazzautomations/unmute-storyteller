@@ -269,6 +269,11 @@ def _run_film(job_id: str, transcript: str, title: Optional[str]) -> None:
             has_video = any(a["kind"] == "video" for a in assets)
             if has_video and nudges >= 1:
                 break
+            # Wallet refusal after we already approved -> don't burn more
+            # nudges, go to the free fallback.
+            if nudges >= 1 and _last_reply_is_refusal(session_id):
+                logger.info("session %s refused on credits — local fallback", session_id)
+                break
             if nudges < MAX_NUDGES:
                 nudges += 1
                 text = APPROVAL_NUDGE if nudges == 1 else CONTINUE_NUDGE
@@ -323,6 +328,18 @@ _REFUSAL_HINTS = ("crédito", "saldo", "recarga", "recarregar", "insufficient",
                   "carteira", "recusad", "credit", "balance", "payment")
 
 
+def _last_reply_is_refusal(session_id: str) -> bool:
+    try:
+        payload = _request("GET", f"/v1/sessions/{session_id}/messages", timeout=20)
+        for msg in reversed(payload.get("messages") or []):
+            if msg.get("role") == "assistant":
+                text = (msg.get("text") or "").lower()
+                return any(h in text for h in _REFUSAL_HINTS)
+    except Exception:
+        pass
+    return False
+
+
 def _scene_prompts(session_id: str, transcript: str) -> List[str]:
     """Pull scene descriptions from the feita script; refuse-messages are skipped."""
     prompts: List[str] = []
@@ -358,7 +375,11 @@ def _scene_prompts(session_id: str, transcript: str) -> List[str]:
 
 
 def _gen_local_stills(job_id: str, prompts: List[str]) -> List[Dict[str, Any]]:
-    """Generate stills via the free Pollinations endpoint -> fake feita-style assets."""
+    """Generate stills via the free Pollinations endpoint -> fake feita-style assets.
+
+    The anonymous tier rate-limits hard (~1 request per window) — space calls
+    out and retry with backoff, alternating models.
+    """
     from urllib.parse import quote
     work = os.path.join(FILMS_DIR, job_id)
     os.makedirs(work, exist_ok=True)
@@ -367,7 +388,9 @@ def _gen_local_stills(job_id: str, prompts: List[str]) -> List[Dict[str, Any]]:
         styled = (prompt[:350] +
                   ", cinematic film still, dramatic lighting, 16:9 film frame")
         dest = os.path.join(work, f"gen_{idx:02d}.png")
-        for model in ("flux", "turbo"):
+        done = False
+        for attempt in range(4):
+            model = "flux" if attempt % 2 == 0 else "turbo"
             url = POLLINATIONS_URL.format(prompt=quote(styled), seed=1000 + idx)
             url = url.replace("model=flux", f"model={model}")
             try:
@@ -377,10 +400,14 @@ def _gen_local_stills(job_id: str, prompts: List[str]) -> List[Dict[str, Any]]:
                                    "createdAt": idx})
                     logger.info("local still %d (%s) generated for job %s",
                                 idx, model, job_id)
+                    done = True
                     break
             except Exception:
-                logger.warning("pollinations %s still %d failed", model, idx)
-                time.sleep(2)
+                logger.warning("pollinations %s still %d attempt %d failed",
+                               model, idx, attempt)
+            time.sleep(20 if attempt < 3 else 0)
+        if done:
+            time.sleep(15)  # respect the rate window before the next still
     return assets
 
 
