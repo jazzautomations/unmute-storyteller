@@ -36,30 +36,33 @@ MIN_READY_ASSETS = 1
 
 FILMS_DIR = os.getenv("FILMS_DIR", "/tmp/storyteller-films")
 
+FULL_FILM_BUDGET = 400  # credits needed for a multi-segment rendered film
+
 FILM_BRIEF = """Crie um curta-metragem cinematográfico a partir desta história contada em entrevista de voz.
 
 HISTÓRIA (transcrição da entrevista):
 \"\"\"{transcript}\"\"\"
 
 
+Orçamento de mídia disponível na conta: ~{budget} créditos.
+
 Instruções de produção — SIGA À RISCA:
-- O orçamento de mídia da conta é MUITO limitado (~55 créditos). Prioridade
-  absoluta: UM segmento de vídeo real de ~10s via modelo TEXT-TO-VIDEO mais
-  barato (480P está ótimo — seedance/vidu/etc.), retratando a cena mais forte
-  da história. NÃO use modelo que exija still de referência — não cabe no
-  orçamento (still 22 + vídeo 50 estoura).
-- Se nem um segmento couber, gere até 2 imagens still 16:9 das cenas-chave e
-  pare (~44 créditos).
-- NÃO faça perguntas e NÃO peça aprovação: escreva um roteiro curto de 3
-  batidas e produza imediatamente.
+- Se o orçamento couber um filme completo: produza TUDO — roteiro, stills de
+  referência, vários segmentos de vídeo de ~10s cada, áudio/narração, e no fim
+  monte e renderize a versão final do filme (desk/render).
+- Se o orçamento NÃO couber o filme completo, priorize UM segmento de vídeo
+  real de ~10s no modelo text-to-video mais barato (480P está ótimo),
+  retratando a cena mais forte, e ainda gere stills 16:9 das outras cenas do
+  roteiro dentro do que sobrar.
+- NÃO faça perguntas e NÃO peça aprovação: escreva o roteiro e produza
+  imediatamente dentro do orçamento.
 - Diálogo/narração em português brasileiro quando houver fala.
 - Estilo cinematográfico e emocional, fiel aos detalhes da história.
 """
 
 APPROVAL_NUDGE = (
-    "Aprovado — siga sem perguntas e dentro do orçamento (~55 créditos): "
-    "produza o segmento text-to-video de 10s agora. Se crédito faltar, gere "
-    "os stills das cenas e pare."
+    "Aprovado — siga sem perguntas dentro do orçamento informado: produza "
+    "agora. Se o crédito de mídia faltar, gere os stills das cenas e pare."
 )
 
 CONTINUE_NUDGE = (
@@ -219,18 +222,27 @@ def film_file(job_id: str) -> Optional[str]:
     return None
 
 
+def _media_budget() -> int:
+    """Best-effort media-usable credits on the account."""
+    try:
+        me = _request("GET", "/v1/me", timeout=15)
+        return max(0, int(me.get("available") or 0))
+    except Exception:
+        return 0
+
+
 def _run_film(job_id: str, transcript: str, title: Optional[str]) -> None:
     deadline = time.time() + JOB_TIMEOUT_S
     nudges = 0
     seen_assets = 0
-    idle_polls = 0
     try:
+        budget = _media_budget()
         session = _request("POST", "/v1/sessions", json={"name": title or "storyteller"})
         session_id = session["id"]
         _set(job_id, session_id=session_id, status="writing",
              detail="escrevendo o roteiro")
 
-        brief = FILM_BRIEF.format(transcript=transcript)
+        brief = FILM_BRIEF.format(transcript=transcript, budget=budget)
         _request("POST", f"/v1/sessions/{session_id}/messages",
                  json={"text": brief}, timeout=60)
 
@@ -270,10 +282,11 @@ def _run_film(job_id: str, transcript: str, title: Optional[str]) -> None:
                      progress={"assets": seen_assets})
                 continue
 
-            # agent is idle — with a real video segment we wrap up; with only
-            # stills (or nothing) we keep pushing until nudges run out.
+            # agent is idle — in the low-budget path one video segment is the
+            # goal so we wrap up; rich budgets keep producing until the studio
+            # renders (caught by the exported check) or nudges run out.
             has_video = any(a["kind"] == "video" for a in assets)
-            if has_video and nudges >= 1:
+            if has_video and nudges >= 1 and budget < FULL_FILM_BUDGET:
                 break
             # Wallet refusal after we already approved -> don't burn more
             # nudges, go to the free fallback.
