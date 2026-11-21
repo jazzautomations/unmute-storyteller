@@ -68,6 +68,8 @@ CONTINUE_NUDGE = (
 
 _JOBS: Dict[str, Dict[str, Any]] = {}
 _JOBS_LOCK = threading.Lock()
+_RECENT_BY_HASH: Dict[int, str] = {}  # transcript prefix hash -> job_id
+DEDUPE_WINDOW_S = 60
 
 
 def _api_key() -> str:
@@ -159,6 +161,21 @@ def start_film(transcript: str, title: Optional[str] = None) -> str:
     if len(transcript) > 30000:
         transcript = transcript[-30000:]
 
+    # Prefix of the story identifies the conversation — the transcript keeps
+    # growing while RTM streams, so an exact-hash dedupe would never match.
+    key = hash(transcript[:200])
+    with _JOBS_LOCK:
+        # Reuse a recent identical request — protects feita sessions/credits
+        # against remounts, double clicks and retry storms.
+        for h, jid in list(_RECENT_BY_HASH.items()):
+            job = _JOBS.get(jid)
+            if not job or time.time() - job["created_at"] > DEDUPE_WINDOW_S:
+                _RECENT_BY_HASH.pop(h, None)
+        existing = _RECENT_BY_HASH.get(key)
+        if existing and existing in _JOBS:
+            logger.info("film dedupe: reusing job %s", existing)
+            return existing
+
     job_id = uuid.uuid4().hex[:12]
     with _JOBS_LOCK:
         _JOBS[job_id] = {
@@ -171,6 +188,8 @@ def start_film(transcript: str, title: Optional[str] = None) -> str:
             "created_at": time.time(),
             "updated_at": time.time(),
         }
+    with _JOBS_LOCK:
+        _RECENT_BY_HASH[key] = job_id
     thread = threading.Thread(
         target=_run_film, args=(job_id, transcript, title), daemon=True
     )
@@ -300,20 +319,31 @@ POLLINATIONS_URL = "https://image.pollinations.ai/prompt/{prompt}?width=1344&hei
 MAX_STILLS = 3
 
 
+_REFUSAL_HINTS = ("crédito", "saldo", "recarga", "recarregar", "insufficient",
+                  "carteira", "recusad", "credit", "balance", "payment")
+
+
 def _scene_prompts(session_id: str, transcript: str) -> List[str]:
-    """Pull the scene prompts the feita agent wrote; fall back to transcript chunks."""
+    """Pull scene descriptions from the feita script; refuse-messages are skipped."""
     prompts: List[str] = []
     try:
         payload = _request("GET", f"/v1/sessions/{session_id}/messages", timeout=30)
         for msg in reversed(payload.get("messages") or []):
             if msg.get("role") != "assistant":
                 continue
-            for line in (msg.get("text") or "").splitlines():
+            text = msg.get("text") or ""
+            if any(hint in text.lower() for hint in _REFUSAL_HINTS):
+                continue
+            for line in text.splitlines():
                 line = line.strip(" -*#\"'")
-                lower = line.lower()
-                if ("prompt" in lower or "still" in lower) and len(line) > 80:
-                    prompts.append(line[:400])
-                elif line.startswith(("Cena", "Scene", "Shot", "1.", "2.", "3.")) and len(line) > 100:
+                if not line:
+                    continue
+                looks_like_beat = (
+                    line[:2].rstrip(".").isdigit()
+                    or line.lower().startswith(("cena", "scene", "shot", "0–", "1–", "2–", "3–"))
+                    or "–" in line[:12]
+                )
+                if looks_like_beat and len(line) > 60:
                     prompts.append(line[:400])
             if len(prompts) >= MAX_STILLS:
                 break
@@ -336,17 +366,21 @@ def _gen_local_stills(job_id: str, prompts: List[str]) -> List[Dict[str, Any]]:
     for idx, prompt in enumerate(prompts[:MAX_STILLS]):
         styled = (prompt[:350] +
                   ", cinematic film still, dramatic lighting, 16:9 film frame")
-        url = POLLINATIONS_URL.format(prompt=quote(styled), seed=1000 + idx)
         dest = os.path.join(work, f"gen_{idx:02d}.png")
-        try:
-            _download(url, dest)
-            if os.path.getsize(dest) < 10000:
-                continue
-            assets.append({"kind": "image", "local_path": dest,
-                           "createdAt": idx})
-            logger.info("local still %d generated for job %s", idx, job_id)
-        except Exception:
-            logger.exception("pollinations still %d failed", idx)
+        for model in ("flux", "turbo"):
+            url = POLLINATIONS_URL.format(prompt=quote(styled), seed=1000 + idx)
+            url = url.replace("model=flux", f"model={model}")
+            try:
+                _download(url, dest)
+                if os.path.getsize(dest) > 10000:
+                    assets.append({"kind": "image", "local_path": dest,
+                                   "createdAt": idx})
+                    logger.info("local still %d (%s) generated for job %s",
+                                idx, model, job_id)
+                    break
+            except Exception:
+                logger.warning("pollinations %s still %d failed", model, idx)
+                time.sleep(2)
     return assets
 
 

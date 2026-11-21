@@ -25,19 +25,22 @@ export function FilmPanel({ transcript, onClose }: FilmPanelProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [kicking, setKicking] = useState(false);
 	const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	// Snapshot the transcript at mount — RTM keeps streaming and would otherwise
+	// retrigger kickOff on every new message.
+	const transcriptRef = useRef(transcript);
 
 	const kickOff = useCallback(async () => {
 		setKicking(true);
 		setError(null);
 		try {
-			const jobId = await startFilm(transcript);
+			const jobId = await startFilm(transcriptRef.current);
 			setJob({ id: jobId, status: "queued", title: "", video_url: null, detail: "na fila" });
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "falha ao iniciar o filme");
 		} finally {
 			setKicking(false);
 		}
-	}, [transcript]);
+	}, []);
 
 	useEffect(() => {
 		kickOff();
